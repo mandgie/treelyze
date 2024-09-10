@@ -17,11 +17,11 @@ def run(
     max_depth: Optional[int] = typer.Option(
         None, "--max-depth", "-d", help="Maximum depth to explore"
     ),
-    exclude: List[str] = typer.Option(
-        ["node_modules", ".git", "env"],
+    exclude: Optional[List[str]] = typer.Option(
+        None,
         "--exclude",
         "-e",
-        help="Directories to exclude",
+        help="Directories or files to exclude (can be used multiple times)",
     ),
     summarize: bool = typer.Option(
         False, "--summarize", "-s", help="Summarize file contents using LLM"
@@ -39,15 +39,28 @@ def run(
     """
     Analyze a directory structure and optionally summarize files.
     """
-    analyze_tree(path, max_depth, exclude, summarize, output, model, prompt)
+    config = load_config()
+
+    # Use config exclude if not provided in command line
+    if exclude is None:
+        exclude_list = config.get("exclude", [])
+    else:
+        exclude_list = exclude  # exclude is already a list of strings
+
+    # Print the exclude list for debugging
+    typer.echo(f"Exclude list: {exclude_list}")
+
+    analyze_tree(path, max_depth, exclude_list, summarize, output, model, prompt)
 
 
 @app.command()
 def config(
     set_key: Optional[str] = typer.Option(
-        None, "--set", help="Set a configuration key (e.g., 'model' or 'prompt')"
+        None,
+        "--set",
+        help="Set a configuration key (e.g., 'model', 'prompt', or 'exclude')",
     ),
-    set_value: Optional[str] = typer.Option(
+    set_value: Optional[str] = typer.Argument(
         None, help="Value for the configuration key"
     ),
     show: bool = typer.Option(False, "--show", help="Show the current configuration"),
@@ -58,12 +71,19 @@ def config(
     config = load_config()
 
     if set_key and set_value:
-        config[set_key] = set_value
+        if set_key == "exclude":
+            # Convert comma-separated string to list
+            config[set_key] = [item.strip() for item in set_value.split(",")]
+        else:
+            config[set_key] = set_value
         save_config(config)
         typer.echo(f"Updated {set_key} in configuration.")
     elif show:
         for key, value in config.items():
-            typer.echo(f"{key}: {value}")
+            if key == "exclude":
+                typer.echo(f"{key}: {', '.join(value)}")
+            else:
+                typer.echo(f"{key}: {value}")
     else:
         typer.echo(
             "Use --set KEY VALUE to update configuration or --show to display current settings."
